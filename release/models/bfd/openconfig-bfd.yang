@@ -12,9 +12,8 @@ module openconfig-bfd {
   import openconfig-types { prefix "oc-types"; }
   import openconfig-interfaces { prefix "oc-if"; }
   import openconfig-inet-types { prefix "oc-inet"; }
-  import openconfig-if-types { prefix "oc-ift"; }
-  import openconfig-network-instance { prefix "oc-ni"; }
   import openconfig-policy-types { prefix "oc-pol-types"; }
+  import ietf-inet-types { prefix "ietf-if"; }
 
   // meta
   organization "OpenConfig working group";
@@ -27,7 +26,40 @@ module openconfig-bfd {
     "An OpenConfig model of Bi-Directional Forwarding Detection (BFD)
     configuration and operational state.";
 
-  oc-ext:openconfig-version "0.1.1";
+  oc-ext:openconfig-version "0.2.4";
+
+  revision "2022-06-28" {
+    description
+      "Remove reference to invalid oc-ift type check";
+    reference "0.2.4";
+  }
+
+  revision "2021-06-16" {
+    description
+      "Remove trailing whitespace";
+    reference "0.2.3";
+  }
+
+  revision "2021-03-17" {
+    description
+      "Remove augments from bfd module.
+       Add bfd support directly on the protocols";
+    reference "0.2.2";
+  }
+
+  revision "2020-05-08" {
+    description
+      "Ensure that when statements reference only read-write leaves
+      from read-write contexts.
+      Add ietf-inet-types LAG type to conditions for micro-bfd.";
+    reference "0.2.1";
+  }
+
+  revision "2019-10-25" {
+    description
+      "Correct when statements.";
+    reference "0.2.0";
+  }
 
   revision "2019-06-02" {
     description
@@ -220,14 +252,6 @@ module openconfig-bfd {
       description
         "When this leaf is set to true - BFD will be enabled on
         each member interface of the aggregated Ethernet bundle.";
-
-      when "/oc-if:interfaces/oc-if:interface" +
-          "[name=current()/../../interface-ref/config/interface]/" +
-          "oc-if:state/oc-if:type = 'oc-ift:IF_AGGREGATE'" {
-        description
-          "Include per-member link BFD only when the type of
-          interface is a link aggregate.";
-      }
     }
   }
 
@@ -507,11 +531,21 @@ module openconfig-bfd {
       parameters.";
 
     container micro-bfd-sessions {
+      when "/oc-if:interfaces/oc-if:interface" +
+          "[oc-if:name=current()/../interface-ref/config/interface]/" +
+          "oc-if:config/oc-if:type = 'ietf-if:ieee8023adLag'" {
+        description
+          "Include per-member link BFD only when the type of
+          interface is a link aggregate.";
+      }
+
       description
         "Parameters relating to micro-BFD sessions associated
         with the interface.";
 
       list micro-bfd-session {
+        key "member-interface";
+
         description
           "This list contains configuration and state parameters
           relating to micro-BFD session.";
@@ -519,7 +553,6 @@ module openconfig-bfd {
           "RFC7130 - Bidirectional Forwarding Detection (BFD)
           on Link Aggregation Group (LAG) Interfaces.";
 
-        key "member-interface";
 
         leaf member-interface {
           type leafref {
@@ -543,13 +576,6 @@ module openconfig-bfd {
           uses bfd-interface-microbfd-config;
           uses bfd-interface-microbfd-state;
         }
-      }
-      when "/oc-if:interfaces/oc-if:interface" +
-          "[name=current()/../interface-ref/config/interface]/" +
-          "oc-if:state/oc-if:type = 'oc-ift:IF_AGGREGATE'" {
-        description
-          "Include per-member link BFD only when the type of
-          interface is a link aggregate.";
       }
     }
   }
@@ -707,42 +733,9 @@ module openconfig-bfd {
           "Operational state parameters relating to enabing BFD.";
 
         uses enable-bfd-config;
-        uses enable-bfd-state;
+        //uses enable-bfd-state;
       }
     }
-  }
-
-  // rjs - TODO - should these be specified within each model? The
-  // answer here is probably yes, since otherwise openconfig
-  // network-instance ends up with a circular reference.
-  augment "/oc-ni:network-instances/oc-ni:network-instance/" +
-          "oc-ni:protocols/oc-ni:protocol/oc-ni:bgp/" +
-          "oc-ni:neighbors/oc-ni:neighbor" {
-    description
-      "Augment the BGP routing protocol to add a link to BFD for
-      neighbour detection.";
-
-    uses bfd-enable;
-  }
-
-  augment "/oc-ni:network-instances/oc-ni:network-instance/" +
-          "oc-ni:protocols/oc-ni:protocol/oc-ni:bgp/" +
-          "oc-ni:peer-groups/oc-ni:peer-group" {
-    description
-      "Augment the BGP routing protocol to add a link to BFD for
-      neighbor detection when specified within a peer-group.";
-
-    uses bfd-enable;
-  }
-
-  augment "/oc-ni:network-instances/oc-ni:network-instance/" +
-          "oc-ni:protocols/oc-ni:protocol/oc-ni:static-routes/" +
-          "oc-ni:static/oc-ni:next-hops/oc-ni:next-hop" {
-    description
-      "Augment the static route configuration to allow a next-hop
-      to be tracked by BFD.";
-
-    uses bfd-enable;
   }
 
   uses bfd-top;

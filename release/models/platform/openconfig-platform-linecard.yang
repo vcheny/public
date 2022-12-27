@@ -8,7 +8,6 @@ module openconfig-platform-linecard {
   prefix "oc-linecard";
 
   import openconfig-platform { prefix oc-platform; }
-  import openconfig-platform-types { prefix oc-platform-types; }
   import openconfig-extensions { prefix oc-ext; }
 
 
@@ -23,7 +22,27 @@ module openconfig-platform-linecard {
     "This module defines data related to LINECARD components in
     the openconfig-platform model";
 
-  oc-ext:openconfig-version "0.1.1";
+  oc-ext:openconfig-version "1.0.0";
+
+  revision "2022-07-28" {
+    description
+      "Remove leaf power-admin-state and use a common definition
+      instead.";
+    reference "1.0.0";
+  }
+
+  revision "2022-04-21" {
+    description
+      "Add platform utilization to linecard.";
+    reference "0.2.0";
+  }
+
+  revision "2020-05-10" {
+    description
+      "Remove when statement that references read-only entity from
+      a read-write context.";
+    reference "0.1.2";
+  }
 
   revision "2018-11-21" {
     description
@@ -56,12 +75,7 @@ module openconfig-platform-linecard {
     description
       "Configuration data for linecard components";
 
-    leaf power-admin-state {
-      type oc-platform-types:component-power-type;
-      default POWER_ENABLED;
-      description
-        "Enable or disable power to the linecard";
-    }
+    uses oc-platform:component-power-management;
   }
 
   grouping linecard-state {
@@ -101,6 +115,7 @@ module openconfig-platform-linecard {
         uses linecard-config;
         uses linecard-state;
       }
+      uses oc-platform:platform-utilization-top;
     }
   }
 
@@ -110,15 +125,10 @@ module openconfig-platform-linecard {
 
   augment "/oc-platform:components/oc-platform:component" {
     description
-      "Adding linecard data to physical inventory";
+      "Adding linecard data to physical inventory. This subtree
+      is only valid when the type of the component is LINECARD.";
 
-    uses linecard-top {
-      when "current()/oc-platform:state/" +
-        "oc-platform:type = 'LINECARD'" {
-        description
-          "Augment is active when component is of type LINECARD";
-      }
-    }
+    uses linecard-top;
   }
 
   // rpc statements

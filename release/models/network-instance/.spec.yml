@@ -2,8 +2,14 @@
   docs:
     - yang/network-instance/openconfig-network-instance-types.yang
     - yang/network-instance/openconfig-network-instance.yang
+    - yang/network-instance/openconfig-evpn-types.yang
+    - yang/network-instance/openconfig-evpn.yang
+    - yang/network-instance/openconfig-programming-errors.yang
+    - yang/aft/openconfig-aft-network-instance.yang
   build:
     - yang/network-instance/openconfig-network-instance.yang
+    - yang/network-instance/openconfig-programming-errors.yang
+    - yang/aft/openconfig-aft-network-instance.yang
   run-ci: true
 - name: openconfig-network-instance-bgp-rib-augment
   build:

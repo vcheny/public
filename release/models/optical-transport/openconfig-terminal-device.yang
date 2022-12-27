@@ -10,12 +10,12 @@ module openconfig-terminal-device {
   import openconfig-types { prefix oc-types; }
   import openconfig-transport-types { prefix oc-opt-types; }
   import openconfig-if-ethernet { prefix oc-eth; }
+  import openconfig-interfaces { prefix oc-if; }
   import openconfig-platform { prefix oc-platform; }
   import openconfig-platform-transceiver { prefix oc-transceiver; }
   import openconfig-lldp { prefix oc-lldp; }
   import openconfig-extensions { prefix oc-ext; }
   import ietf-yang-types { prefix yang; }
-  import openconfig-interfaces { prefix oc-if; }
   import openconfig-yang-types { prefix oc-yang; }
 
 
@@ -77,13 +77,62 @@ module openconfig-terminal-device {
     ports per linecard, separate linecards for client and line ports,
     etc.).";
 
-  oc-ext:openconfig-version "1.5.1";
+  oc-ext:openconfig-version "1.9.0";
+
+  revision "2021-07-29" {
+    description
+      "Add several coherent performance monitors to optical channel.
+      Re-group and add PHY-related performance monitors to optical
+      channel and logical channel.";
+    reference "1.9.0";
+  }
+
+  revision "2021-02-23" {
+    description
+      "Small additions to support ZR transceivers. Adds a new
+      ingress type of interface and a client mapping mode leaf.";
+    reference "1.8.0";
+  }
+
+  revision "2020-05-09" {
+    description
+      "Remove references from read-write contexts to read-only
+      contexts in when statements.";
+    reference "1.7.3";
+  }
+
+  revision "2019-11-28" {
+    description
+      "Additional xpath fixes in when statement";
+    reference "1.7.2";
+  }
+
+  revision "2019-10-12" {
+    description
+      "Fix when statement paths";
+    reference "1.7.1";
+  }
+
+  revision "2019-08-08" {
+    description
+      "Add ALS config to logical-channel/ethernet/config and remove
+       legacy interfaces augment for this config. Client FEC was
+       previosuly migrated to the components model and should not
+       be here anymore.";
+    reference "1.7.0";
+  }
+
+  revision "2019-07-26" {
+    description
+      "Add support for LLDP natively on logical-channels.";
+    reference "1.6.0";
+  }
 
   revision "2018-11-21" {
     description
       "Add OpenConfig module metadata extensions.";
     reference "1.5.1";
-  } 
+  }
 
   revision "2018-10-23" {
     description
@@ -157,7 +206,44 @@ module openconfig-terminal-device {
       "Configuration data for logical channels with Ethernet
       framing";
 
-    //TODO:currently a empty container
+    leaf client-als {
+      type enumeration {
+        enum NONE {
+          description
+            "The client port will do nothing when a failure is
+            detected on the line port or the remote client port";
+        }
+        enum LASER_SHUTDOWN {
+          description
+            "The client port will shut down the laser to notify the
+            subtending Ethernet equipment of the failure detected on
+            the line port or the remote client port.";
+        }
+        enum ETHERNET {
+          description
+            "The client port will propagate the local fault or remote
+            fault signal to the subtending Ethernet equipment.";
+        }
+      }
+      default ETHERNET;
+      description
+        "Sets the client port behavior that defines if the actions
+        of automatic laser shutdown (als), ethernet fault
+        propagation, or nothing will be done upon the detection
+        of a failure on the line port or the upstream remote
+        client port.";
+    }
+
+    leaf als-delay {
+      type uint32;
+      units milliseconds;
+      default 0;
+      description
+        "The timer to delay the client-als actions on the client
+        port when a local or remote fault is detected on the line
+        port. The delay will only be valid when the client-als is
+        set to LASER_SHUTDOWN";
+    }
   }
 
   grouping terminal-ethernet-protocol-state {
@@ -167,6 +253,13 @@ module openconfig-terminal-device {
 
       uses oc-eth:ethernet-interface-state-counters;
       uses terminal-ethernet-protocol-state-counters;
+      uses terminal-phy-protocol-stats {
+        description
+          "When 400ZR/ZR+ transceivers are plugged in switches or routers,
+          this grouping will be attached to logical channel with Ethernet
+          protocol framing, in order to involve host-side fec-related
+          error performances.";
+      }
   }
 
   grouping terminal-ethernet-protocol-state-counters {
@@ -183,7 +276,7 @@ module openconfig-terminal-device {
         "The number of received bit interleaved parity (BIP) errors
         at the physical coding sublayer (PCS). If the interface
         consists of multiple lanes, this will be the sum of all
-	errors on the lane";
+        errors on the lane";
     }
 
     leaf in-pcs-errored-seconds {
@@ -262,9 +355,127 @@ module openconfig-terminal-device {
           "Operational state data for Ethernet protocol framing
           on logical channels";
 
+        uses terminal-ethernet-protocol-config;
         uses terminal-ethernet-protocol-state;
       }
+
+      uses lldp-logical-channel-top;
     }
+  }
+
+  grouping lldp-logical-channel-top {
+    description
+      "Top-level grouping for LLDP data for a logical channel";
+
+    container lldp {
+      description
+        "LLDP data for logical channels";
+
+      container config {
+        description
+          "LLDP configuration data for logical channels";
+
+        uses lldp-logical-channel-config;
+      }
+
+      container state {
+        config false;
+        description
+          "LLDP operational state data for logical channels";
+
+        uses lldp-logical-channel-config;
+        uses oc-lldp:lldp-interface-state;
+      }
+
+      uses lldp-logical-channel-neighbor-top;
+    }
+  }
+
+  grouping lldp-logical-channel-config {
+    description
+      "Configuration data for LLDP for logical-channels";
+
+    leaf enabled {
+      type boolean;
+      default "false";
+      description
+        "Enable or disable the LLDP protocol on the logical channel.";
+    }
+
+    leaf snooping {
+      type boolean;
+      default "false";
+      description
+        "If true, LLDP PDUs are only received and processed on
+        the logical-channel, but are not originated by the local
+        agent. The PDUs are not dropped by the logical channel after
+        processing, but relayed to the downstream link layer
+        neighbors. The snooping mode is valid only when LLDP is
+        enabled on the logical channel. The snooping mode is useful
+        when a logical channel does not want its link layer neighbors
+        to discover itself since, for example, it is a lower-layer
+        logical channel.";
+    }
+  }
+
+  grouping lldp-logical-channel-neighbor-top {
+    description
+      "Top-level grouping for the LLDP neighbor list";
+
+    container neighbors {
+      config false;
+      description
+        "Enclosing container for list of LLDP neighbors on
+        a logical channel";
+
+      list neighbor {
+        key "id";
+        description
+          "List of LLDP neighbors. If the implementation only
+          supports one neighbor, this would always be a list with
+          one item. If the device and neighbor supported multiple
+          neighbors, which can be achieved via LLDP forwarding, then
+          this would be supported";
+        reference
+          "IEEE Std 802.1AB-2016, section 7.1, Destination address";
+
+        leaf id {
+          type leafref {
+            path "../state/id";
+          }
+          description
+            "System generated identifier for the neighbor on
+            the logical channel.";
+        }
+
+        container config {
+          description
+            "Configuration data ";
+
+          uses lldp-logical-channel-neighbor-config;
+        }
+
+        container state {
+
+          config false;
+
+          description
+            "Operational state data ";
+
+          uses oc-lldp:lldp-system-info-config;
+          uses oc-lldp:lldp-system-info-state;
+          uses oc-lldp:lldp-neighbor-config;
+          uses oc-lldp:lldp-neighbor-state;
+        }
+
+        uses oc-lldp:lldp-custom-tlv-top;
+      }
+    }
+  }
+
+  grouping lldp-logical-channel-neighbor-config {
+    description
+      "Configuration data for LLDP neighbors";
   }
 
   grouping terminal-otn-protocol-config {
@@ -351,12 +562,6 @@ module openconfig-terminal-device {
       reference "ITU-T Rec. G.826";
     }
 
-    leaf fec-uncorrectable-blocks {
-      type yang:counter64;
-      description
-        "The number of blocks that were uncorrectable by the FEC";
-    }
-
     leaf fec-uncorrectable-words {
       type yang:counter64;
       description
@@ -382,10 +587,17 @@ module openconfig-terminal-device {
     }
   }
 
-  grouping terminal-otn-protocol-multi-stats {
+  grouping terminal-phy-protocol-stats {
     description
-      "Multi-value statistics containers for logical channels using
-      OTN framing (e.g., max, min, avg, instant)";
+      "Counters and multi-value statistics for FEC-related error
+      performance";
+
+    leaf fec-uncorrectable-blocks {
+      type yang:counter64;
+      description
+        "The number of blocks or frames that were uncorrectable by
+        the FEC";
+    }
 
     container pre-fec-ber {
       description
@@ -460,7 +672,11 @@ module openconfig-terminal-device {
           "Remote defect indication (RDI) message received";
       }
       uses terminal-otn-protocol-counter-stats;
-      uses terminal-otn-protocol-multi-stats;
+      uses terminal-phy-protocol-stats {
+        description
+          "This grouping may be used when the logical-channel-type
+          is 'PROT_OTN.";
+      }
   }
 
   grouping terminal-otn-protocol-top {
@@ -792,6 +1008,17 @@ module openconfig-terminal-device {
         all physical channels in the transceiver are assumed to be
         mapped to the logical channel.";
     }
+
+    leaf interface {
+      type oc-if:base-interface-ref;
+      description
+        "Reference to the interface carrying the input signal
+        for the logical channel. The ingress will specify an interface
+        in the case of a transceiver being utilized directly in a
+        router and bypassing a dedicated terminal device. When
+        specified, the other leaves in the ingress config must be
+        empty.";
+    }
   }
 
   grouping terminal-logical-channel-ingress-state {
@@ -807,7 +1034,7 @@ module openconfig-terminal-device {
       description
         "Top-level container for specifying references to the
         source of signal for the logical channel, either a
-        transceiver or individual physical channels";
+        transceiver, individual physical channels, or an interface";
 
       container config {
         description
@@ -921,6 +1148,23 @@ module openconfig-terminal-device {
         "When enabled the logical channel's DSP will generate a pseudo
         randmon bit stream (PRBS) which can be used during testing.";
     }
+
+    leaf client-mapping-mode {
+      type identityref {
+        base oc-opt-types:CLIENT_MAPPING_MODE;
+      }
+      description
+        "The client side mapping mode internal to the device that
+        specifies the number of client electrical interfaces and
+        the data rate of each client electrical interface. For
+        example, a ZR+ transceiver with an optical line rate of 400G
+        could be configured to break out into four 100G client
+        signals which might connect to an interface or a
+        physical-channel. This would be configured on the aggregate
+        logical channel as MODE_4X100G. This is only valid on the
+        aggregate logical channel that is connected directly to the
+        optical-channel.";
+    }
   }
 
 
@@ -994,14 +1238,14 @@ module openconfig-terminal-device {
         }
 
         uses terminal-otn-protocol-top {
-          when "config/logical-channel-type = 'PROT_OTN'" {
+          when "./config/logical-channel-type = 'PROT_OTN'" {
             description
               "Include the OTN protocol data only when the
               channel is using OTN framing.";
           }
         }
         uses terminal-ethernet-protocol-top {
-          when "config/logical-channel-type = 'PROT_ETHERNET'" {
+          when "./config/logical-channel-type = 'PROT_ETHERNET'" {
             description
               "Include the Ethernet protocol statistics only when the
               protocol used by the link is Ethernet.";
@@ -1046,7 +1290,6 @@ module openconfig-terminal-device {
       // operational modes, but YANG 1.0 does not allow a r/w
       // leaf to be a leafref to a r/o leaf.
     }
-
 
     leaf line-port {
       type leafref {
@@ -1121,6 +1364,152 @@ module openconfig-terminal-device {
         instant value";
 
       uses oc-types:avg-min-max-instant-stats-precision2-dB;
+    }
+
+    container modulator-bias-xi {
+      description
+        "The bias on in-phase path and Polarization X of
+        the coherent modulator. This is represented as a percentage
+        with 2 decimal precision. This term is defined by OIF
+        Implementation Agreement for Coherent CMIS. Values include
+        the instantaneous, average, minimum, and maximum statistics.
+        If avg/min/max statistics are not supported, the target is
+        expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision2-pct;
+    }
+
+    container modulator-bias-xq {
+      description
+        "The bias on quadrature path and Polarization X of
+        the coherent modulator. This is represented as a percentage
+        with 2 decimal precision. This term is defined by OIF
+        Implementation Agreement for Coherent CMIS. Values include
+        the instantaneous, average, minimum, and maximum statistics.
+        If avg/min/max statistics are not supported, the target is
+        expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision2-pct;
+    }
+
+    container modulator-bias-yi {
+      description
+        "The bias on in-phase path and Polarization Y of
+        the coherent modulator. This is represented as a percentage
+        with 2 decimal precision. This term is defined by OIF
+        Implementation Agreement for Coherent CMIS. Values include
+        the instantaneous, average, minimum, and maximum statistics.
+        If avg/min/max statistics are not supported, the target is
+        expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision2-pct;
+    }
+
+    container modulator-bias-yq {
+      description
+        "The bias on quadrature path and Polarization Y of
+        the coherent modulator. This is represented as a percentage
+        with 2 decimal precision. This term is defined by OIF
+        Implementation Agreement for Coherent CMIS. Values include
+        the instantaneous, average, minimum, and maximum statistics.
+        If avg/min/max statistics are not supported, the target is
+        expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision2-pct;
+    }
+
+    container modulator-bias-x-phase {
+      description
+        "The X-Phase bias of the coherent modulator. This is
+        represented as a percentage with 2 decimal precision. This
+        term is defined by OIF Implementation Agreement for
+        Coherent CMIS. Values include the instantaneous, average,
+        minimum, and maximum statistics. If avg/min/max statistics
+        are not supported, the target is expected to just supply
+        the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision2-pct;
+    }
+
+    container modulator-bias-y-phase {
+      description
+        "The Y-Phase bias of the coherent modulator. This is
+        represented as a percentage with 2 decimal precision. This
+        term is defined by OIF Implementation Agreement for
+        Coherent CMIS. Values include the instantaneous, average,
+        minimum, and maximum statistics. If avg/min/max statistics
+        are not supported, the target is expected to just supply
+        the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision2-pct;
+    }
+
+    container osnr {
+      description
+        "Optical signal to noise ratio at 12.5GHz noise bandwidth
+        in dB with two decimal precision. Values include the
+        instantaneous, average, minimum, and maximum statistics.
+        If avg/min/max statistics are not supported, the target
+        is expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-types:avg-min-max-instant-stats-precision2-dB;
+    }
+
+    container carrier-frequency-offset {
+      description
+        "Carrier frequency offset in MHz with 1 decimal precision.
+        Values include the instantaneous, average, minimum, and
+        maximum statistics. If avg/min/max statistics are not supported,
+        the target is expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision1-mhz;
+    }
+
+    container sop-roc {
+      description
+        "State-of-polarization rate-of-change (SOP-ROC) in krad/s with 1
+        decimal precision. This term is defined by OIF Implementation
+        Agreement for Coherent CMIS. Values include the instantaneous,
+        average, minimum, and maximum statistics. If avg/min/max
+        statistics are not supported, the target is expected to just
+        supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-opt-types:avg-min-max-instant-stats-precision1-krads;
+    }
+
+    container modulation-error-ratio {
+      description
+        "Modulation error ratio in dB with two decimal precision. Values
+        include the instantaneous, average, minimum, and maximum statistics.
+        If avg/min/max statistics are not supported, the target is
+        expected to just supply the instant value.";
+
+      reference "IA OIF-C-CMIS-01.1 Table 7";
+
+      uses oc-types:avg-min-max-instant-stats-precision2-dB;
+    }
+
+    uses terminal-phy-protocol-stats {
+      description
+        "When there is no OTN framing e.g. 400ZR, this grouping will be used.";
     }
   }
 
@@ -1242,75 +1631,6 @@ module openconfig-terminal-device {
     }
   }
 
-  grouping ethernet-config-ext {
-    description
-      "Extended ethernet config data on terminal device";
-
-    leaf client-fec {
-      type enumeration {
-        enum ENABLED {
-          description
-            "FEC is enabled";
-        }
-
-        enum DISABLED {
-          description
-            "FEC is disabled";
-        }
-
-        enum AUTO {
-          description
-            "System will automatically enable or disable FEC
-            according to the Ethernet compliance codes (PMD)
-            supported by transceivers";
-        }
-      }
-      default AUTO;
-      description
-        "Configure whether FEC will be manually or automatically
-        enabled or disabled on the client port";
-    }
-
-    leaf client-als {
-      type enumeration {
-        enum NONE {
-          description
-            "The client port will do nothing when a failure is
-            detected on the line port or the remote client port";
-        }
-        enum LASER_SHUTDOWN {
-          description
-            "The client port will shut down the laser to notify the
-            subtending Ethernet equipment of the failure detected on
-            the line port or the remote client port.";
-        }
-        enum ETHERNET {
-          description
-            "The client port will propagate the local fault or remote
-            fault signal to the subtending Ethernet equipment.";
-        }
-      }
-      default ETHERNET;
-      description
-        "Sets the client port behavior that defines if the actions
-        of automatic laser shutdown (als), ethernet fault
-        propagation, or nothing will be done upon the detection
-        of a failure on the line port or the upstream remote
-        client port.";
-    }
-
-    leaf als-delay {
-      type uint32;
-      units milliseconds;
-      default 0;
-      description
-        "The timer to delay the client-als actions on the client
-        port when a local or remote fault is detected on the line
-        port. The delay will only be valid when the client-als is
-        set to LASER_SHUTDOWN";
-    }
-  }
-
   grouping terminal-device-config {
     description
       "Configuration data for transport terminal devices at a
@@ -1355,29 +1675,6 @@ module openconfig-terminal-device {
     }
   }
 
-
-  grouping lldp-interface-config {
-    description
-      "Extension to the configuration data for LLDP on each
-      optical terminal interface";
-
-    leaf snooping {
-      type boolean;
-      default "false";
-      description
-        "If true, LLDP PDUs are only received and processed on
-        the interface, but are not originated by the local agent.
-        The PDUs are not dropped by the interface after processing,
-        but relayed to the downstream link layer neighbors.
-        If false, LLDP PDUs are both received and originated on the
-        interface. The snooping mode is valid only when LLDP is
-        enabled on the interface. The snooping mode is useful
-        when an interface does not want its link layer neighbors to
-        discover itself since, for example, it is a lower-layer
-        interface";
-    }
-  }
-
   // data definition statements
 
   uses terminal-device-top;
@@ -1385,34 +1682,11 @@ module openconfig-terminal-device {
   // augment statements
 
   augment "/oc-platform:components/oc-platform:component" {
-    when "/oc-platform:components/oc-platform:component/" +
-      "oc-platform:state/oc-platform:type = 'OPTICAL_CHANNEL'" {
-      description
-        "Augment is active when component is of type
-        OPTICAL_CHANNEL";
-    }
     description
-      "Adding optical channel data to physical inventory";
+      "Adding optical channel data to physical inventory. This
+      augmentation is only valid when the type of the component
+      is OPTICAL_CHANNEL.";
 
-    uses terminal-optical-channel-top {
-    }
-  }
-
-  augment "/oc-if:interfaces/oc-if:interface/oc-eth:ethernet" +
-    "/oc-eth:config" {
-    description
-      "Adds configuration data for client interfaces using Ethernet
-      framing";
-
-    uses ethernet-config-ext;
-  }
-
-  augment "/oc-lldp:lldp/oc-lldp:interfaces/oc-lldp:interface/" +
-    "oc-lldp:config" {
-    description
-      "Augment the lldp config data to support the snooping mode
-      for each optical terminal interface";
-
-    uses lldp-interface-config;
+    uses terminal-optical-channel-top;
   }
 }
